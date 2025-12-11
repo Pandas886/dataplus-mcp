@@ -8,7 +8,7 @@ import os
 import logging
 from typing import Optional, List, Dict, Any
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from trino.dbapi import connect
 # Trino exceptions are handled through generic Exception handling
 
@@ -17,10 +17,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize FastMCP instance
-mcp = FastMCP("trino-mcp", json_response=True)
+mcp = FastMCP("trino-mcp")
 
 # --- Configuration ---
-TRINO_HOST = os.getenv("TRINO_HOST", "trino")
+TRINO_HOST = os.getenv("TRINO_HOST", "localhost")
 TRINO_PORT = int(os.getenv("TRINO_PORT", 8080))
 TRINO_USER = os.getenv("TRINO_USER", "mcp_agent")
 TRINO_CATALOG = os.getenv("TRINO_CATALOG", None)
@@ -54,7 +54,7 @@ def _format_compact_result(cursor, max_rows: Optional[int] = None) -> Dict[str, 
     返回字典格式，兼容 FastMCP 的 JSON 响应。
     """
     if not cursor.description:
-        return {"columns": [], "rows": [], "message": "Query executed. No results returned."}
+        return {"columns": [], "rows": []}
 
     max_rows = max_rows or MAX_ROWS_DEFAULT
 
@@ -65,7 +65,7 @@ def _format_compact_result(cursor, max_rows: Optional[int] = None) -> Dict[str, 
     rows = cursor.fetchmany(max_rows + 1)
 
     if not rows:
-        return {"columns": columns, "rows": [], "message": f"No rows returned for columns: {', '.join(columns)}"}
+        return {"columns": columns, "rows": []}
 
     # 处理行数据（限制行数并截断长字段）
     display_rows = rows[:max_rows]
@@ -84,16 +84,22 @@ def _format_compact_result(cursor, max_rows: Optional[int] = None) -> Dict[str, 
                 processed_row.append(cell_str)
         processed_rows.append(processed_row)
 
-    # 构建消息
-    message = f"Retrieved {len(processed_rows)} rows"
+    # 只在数据被截断时添加消息
     if len(rows) > max_rows:
-        message += f" (truncated, use LIMIT clause for pagination)"
+        message = f"Showing {len(processed_rows)} rows (truncated)"
+    else:
+        message = None
 
-    return {
+    result = {
         "columns": columns,
-        "rows": processed_rows,
-        "message": message
+        "rows": processed_rows
     }
+
+    # 只在有消息时才添加
+    if message:
+        result["message"] = message
+
+    return result
 
 def _validate_readonly_query(sql: str) -> bool:
     """验证查询是否为只读查询。"""
@@ -170,11 +176,6 @@ def sql_query(sql: str, max_rows: Optional[int] = None) -> Dict[str, Any]:
 
         cur.close()
         conn.close()
-
-        # 添加查询信息
-        result["query"] = sql
-        result["catalog"] = TRINO_CATALOG
-        result["schema"] = TRINO_SCHEMA
 
         return result
 
@@ -260,11 +261,6 @@ def preview_table(table: str, limit: int = 20) -> Dict[str, Any]:
         # 使用 sql_query 执行
         result = sql_query(query, limit)
 
-        # 添加预览特定的元数据
-        result["table"] = table
-        result["preview"] = True
-        result["limit"] = limit
-
         return result
 
     except Exception as e:
@@ -283,13 +279,22 @@ def get_connection_info() -> Dict[str, Any]:
         "source": "mcp-trino-fastmcp"
     }
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the MCP server."""
     # 从环境变量获取主机和端口
     host = os.getenv("MCP_HOST", "0.0.0.0")
-    port = int(os.getenv("MCP_PORT", 8656))
+    port = int(os.getenv("MCP_PORT", 8658))
 
-    logger.info(f"Starting Trino FastMCP Server on {host}:{port}")
+    logger.info(f"Starting Trino FastMCP Server")
+    logger.info(f"Server will be available at http://{host}:{port}")
     logger.info(f"Trino connection: {TRINO_HOST}:{TRINO_PORT}")
 
     import uvicorn
-    uvicorn.run(mcp.sse_app(), host=host, port=port)
+    # 直接使用 uvicorn 运行 SSE 应用
+    from fastmcp.server.http import create_sse_app
+    app = create_sse_app(mcp, message_path="/messages", sse_path="/sse")
+    uvicorn.run(app, host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()

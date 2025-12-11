@@ -1,4 +1,3 @@
-
 services:
   trino:
     image: trinodb/trino:latest
@@ -23,29 +22,6 @@ services:
       retries: 5
     networks:
       - trino-network
-
-  mcp-server:
-    build: ./mcp-server
-    container_name: mcp-sse-agent
-    ports:
-      # Expose the desired 8656 port for SSE connections
-      - "8656:8656"
-    environment:
-      - TRINO_HOST=trino
-      - TRINO_PORT=8080
-      - TRINO_USER=mcp_agent
-      - MCP_PORT=8656
-      - MCP_HOST=0.0.0.0
-    depends_on:
-      trino:
-        condition: service_healthy
-    networks:
-      - trino-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8656/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 volumes:
   trino-data:
