@@ -1,0 +1,55 @@
+
+services:
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino-engine
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount configuration files
+      - ./trino-etc/config.properties:/etc/trino/config.properties
+      - ./trino-etc/node.properties:/etc/trino/node.properties
+      - ./trino-etc/jvm.config:/etc/trino/jvm.config
+      # Mount preset catalog configurations
+      - ./trino-etc/catalog:/etc/trino/catalog
+      - trino-data:/data/trino
+    # Allow Trino to connect to host databases (for preset catalogs)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/v1/info || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - trino-network
+
+  mcp-server:
+    build: ./mcp-server
+    container_name: mcp-sse-agent
+    ports:
+      # Expose the desired 8656 port for SSE connections
+      - "8656:8656"
+    environment:
+      - TRINO_HOST=trino
+      - TRINO_PORT=8080
+      - TRINO_USER=mcp_agent
+      - MCP_PORT=8656
+      - MCP_HOST=0.0.0.0
+    depends_on:
+      trino:
+        condition: service_healthy
+    networks:
+      - trino-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8656/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  trino-data:
+
+networks:
+  trino-network:
+    driver: bridge
