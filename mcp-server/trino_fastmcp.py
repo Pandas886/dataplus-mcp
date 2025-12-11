@@ -287,6 +287,346 @@ def get_connection_info() -> Dict[str, Any]:
         "source": "mcp-trino-fastmcp"
     }
 
+@mcp.tool()
+def list_connectors() -> Dict[str, Any]:
+    """获取 Trino 中可用的连接器列表和说明。
+
+    Returns:
+        连接器信息字典，包含连接器名称和描述
+    """
+    # Trino 内置的常用连接器
+    connectors = {
+        "memory": {
+            "description": "内存连接器，用于测试和临时数据存储",
+            "example_properties": {
+                "memory.max-data-per-node": "128MB"
+            }
+        },
+        "tpch": {
+            "description": "TPC-H 基准测试连接器，提供标准测试数据集",
+            "example_properties": {}
+        },
+        "tpcds": {
+            "description": "TPC-DS 基准测试连接器，提供决策支持测试数据集",
+            "example_properties": {}
+        },
+        "hive": {
+            "description": "Hive 连接器，用于查询 Hadoop 生态系统的数据",
+            "example_properties": {
+                "hive.metastore.uri": "thrift://localhost:9083",
+                "hive.s3.endpoint": "http://localhost:9000",
+                "hive.s3.aws-access-key": "${ENV:AWS_ACCESS_KEY}",
+                "hive.s3.aws-secret-key": "${ENV:AWS_SECRET_KEY}"
+            }
+        },
+        "postgresql": {
+            "description": "PostgreSQL 连接器，用于连接 PostgreSQL 数据库",
+            "example_properties": {
+                "connection-url": "jdbc:postgresql://localhost:5432/database",
+                "connection-user": "${ENV:POSTGRES_USER}",
+                "connection-password": "${ENV:POSTGRES_PASSWORD}",
+                "case-insensitive-name-matching": "true"
+            }
+        },
+        "mysql": {
+            "description": "MySQL 连接器，用于连接 MySQL 数据库",
+            "example_properties": {
+                "connection-url": "jdbc:mysql://localhost:3306/database",
+                "connection-user": "${ENV:MYSQL_USER}",
+                "connection-password": "${ENV:MYSQL_PASSWORD}"
+            }
+        },
+        "iceberg": {
+            "description": "Iceberg 连接器，用于查询 Iceberg 表格式的数据湖",
+            "example_properties": {
+                "iceberg.catalog.type": "rest",
+                "iceberg.rest-catalog.uri": "http://localhost:8181"
+            }
+        },
+        "delta": {
+            "description": "Delta Lake 连接器，用于查询 Delta Lake 表格式的数据",
+            "example_properties": {
+                "hive.metastore.uri": "thrift://localhost:9083"
+            }
+        },
+        "mongodb": {
+            "description": "MongoDB 连接器，用于连接 MongoDB 数据库",
+            "example_properties": {
+                "mongodb.seeds": "localhost:27017",
+                "connection-url": "mongodb://localhost:27017/database"
+            }
+        },
+        "kafka": {
+            "description": "Kafka 连接器，用于查询 Kafka 消息流",
+            "example_properties": {
+                "kafka.bootstrap.servers": "localhost:9092",
+                "kafka.table-names": "topic1,topic2"
+            }
+        },
+        "elasticsearch": {
+            "description": "Elasticsearch 连接器，用于查询 Elasticsearch 索引",
+            "example_properties": {
+                "elasticsearch.host": "localhost",
+                "elasticsearch.port": "9200",
+                "elasticsearch.default-schema": "default"
+            }
+        },
+        "redis": {
+            "description": "Redis 连接器，用于连接 Redis 数据库",
+            "example_properties": {
+                "redis.host": "localhost",
+                "redis.port": "6379",
+                "redis.password": "${ENV:REDIS_PASSWORD}"
+            }
+        }
+    }
+
+    return {
+        "connectors": connectors,
+        "note": "实际可用的连接器取决于 Trino 部署配置",
+        "usage_tips": [
+            "使用 ${ENV:VAR_NAME} 语法引用环境变量，提高安全性",
+            "属性名包含特殊字符时需要用双引号包围",
+            "所有属性值都需要用单引号包围"
+        ]
+    }
+
+@mcp.tool()
+def create_catalog(catalog_name: str, connector: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+    """动态创建新的 catalog。
+
+    Args:
+        catalog_name: catalog 名称
+        connector: 连接器类型（如 'hive', 'postgresql', 'mysql', 'memory' 等）
+        properties: 连接器属性字典。支持环境变量引用，如 {"connection-password": "${ENV:DB_PASSWORD}"}
+
+    Returns:
+        操作结果信息
+
+    Examples:
+        创建 Memory catalog:
+        create_catalog("memory_test", "memory", {"memory.max-data-per-node": "128MB"})
+
+        创建 PostgreSQL catalog（使用环境变量）:
+        create_catalog("pg_test", "postgresql", {
+            "connection-url": "jdbc:postgresql://localhost:5432/mydb",
+            "connection-user": "${ENV:POSTGRES_USER}",
+            "connection-password": "${ENV:POSTGRES_PASSWORD}"
+        })
+    """
+    try:
+        # 验证 catalog 名称
+        if not catalog_name or not catalog_name.replace('_', '').replace('-', '').isalnum():
+            raise ValueError("Catalog name must be alphanumeric and can contain underscores and hyphens")
+
+        # 验证 connector 名称
+        if not connector or not connector.isalnum():
+            raise ValueError("Connector must be alphanumeric")
+
+        # 构建 SQL 语句，使用 USING 语法
+        # 正确处理属性名和值，特别是包含特殊字符的情况
+        props_list = []
+        for key, value in properties.items():
+            # 属性名如果包含特殊字符，需要用双引号
+            # 连字符需要特别处理，因为它在 SQL 标识符中是特殊字符
+            if '-' in key or '.' in key or not key.replace('_', '').isalnum():
+                prop_name = f'"{key}"'
+            else:
+                prop_name = key
+            # 属性值始终用单引号包围，并转义单引号
+            escaped_value = str(value).replace("'", "''")
+            prop_value = f"'{escaped_value}'"
+            props_list.append(f"{prop_name} = {prop_value}")
+
+        sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING {connector} WITH ({', '.join(props_list)})"
+
+        logger.info(f"Creating catalog: {sql}")
+
+        conn = _get_trino_connection()
+        cur = conn.cursor()
+        cur.execute(sql)
+
+        # 验证 catalog 是否创建成功
+        cur.execute("SHOW CATALOGS")
+        catalogs = [row[0] for row in cur.fetchall()]
+
+        cur.close()
+        conn.close()
+
+        if catalog_name in catalogs:
+            # 获取创建的 catalog 信息
+            catalog_info = get_catalog_properties(catalog_name)
+
+            return {
+                "success": True,
+                "catalog_name": catalog_name,
+                "connector": connector,
+                "message": f"Catalog '{catalog_name}' created successfully",
+                "properties": properties,
+                "catalog_info": catalog_info
+            }
+        else:
+            return {
+                "success": False,
+                "catalog_name": catalog_name,
+                "connector": connector,
+                "message": f"Failed to create catalog '{catalog_name}' - please check connector configuration and properties",
+                "properties": properties
+            }
+
+    except ValueError as ve:
+        logger.error(f"Validation error creating catalog {catalog_name}: {str(ve)}")
+        return {
+            "success": False,
+            "catalog_name": catalog_name,
+            "error_type": "validation",
+            "message": f"Validation error: {str(ve)}"
+        }
+    except Exception as e:
+        logger.error(f"Error creating catalog {catalog_name}: {str(e)}")
+        return {
+            "success": False,
+            "catalog_name": catalog_name,
+            "error_type": "execution",
+            "message": f"Error creating catalog: {str(e)}",
+            "suggestion": "Please check: 1) Connector is available in Trino 2) Properties are correct 3) Environment variables are set"
+        }
+
+@mcp.tool()
+def drop_catalog(catalog_name: str) -> Dict[str, Any]:
+    """删除指定的 catalog。
+
+    Args:
+        catalog_name: 要删除的 catalog 名称
+
+    Returns:
+        操作结果信息
+    """
+    try:
+        # 检查 catalog 是否存在
+        conn = _get_trino_connection()
+        cur = conn.cursor()
+        cur.execute("SHOW CATALOGS")
+        catalogs = [row[0] for row in cur.fetchall()]
+
+        if catalog_name not in catalogs:
+            cur.close()
+            conn.close()
+            return {
+                "success": False,
+                "catalog_name": catalog_name,
+                "message": f"Catalog '{catalog_name}' does not exist"
+            }
+
+        # 执行删除操作
+        sql = f"DROP CATALOG IF EXISTS {catalog_name}"
+        logger.info(f"Dropping catalog: {sql}")
+
+        cur.execute(sql)
+
+        # 验证删除是否成功
+        cur.execute("SHOW CATALOGS")
+        updated_catalogs = [row[0] for row in cur.fetchall()]
+
+        cur.close()
+        conn.close()
+
+        if catalog_name not in updated_catalogs:
+            return {
+                "success": True,
+                "catalog_name": catalog_name,
+                "message": f"Catalog '{catalog_name}' dropped successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "catalog_name": catalog_name,
+                "message": f"Failed to drop catalog '{catalog_name}'"
+            }
+
+    except Exception as e:
+        logger.error(f"Error dropping catalog {catalog_name}: {str(e)}")
+        return {
+            "success": False,
+            "catalog_name": catalog_name,
+            "message": f"Error dropping catalog: {str(e)}"
+        }
+
+@mcp.tool()
+def get_catalog_properties(catalog_name: str) -> Dict[str, Any]:
+    """获取指定 catalog 的配置属性。
+
+    Args:
+        catalog_name: catalog 名称
+
+    Returns:
+        catalog 的配置信息，包括创建语句和解析后的属性
+    """
+    try:
+        conn = _get_trino_connection()
+        cur = conn.cursor()
+
+        # 首先检查 catalog 是否存在
+        cur.execute("SHOW CATALOGS")
+        catalogs = [row[0] for row in cur.fetchall()]
+
+        if catalog_name not in catalogs:
+            cur.close()
+            conn.close()
+            return {
+                "catalog_name": catalog_name,
+                "exists": False,
+                "message": f"Catalog '{catalog_name}' does not exist"
+            }
+
+        # 尝试获取 catalog 创建信息
+        # 注意：SHOW CREATE CATALOG 仅在动态 catalog 管理模式下可用
+        try:
+            sql = f"SHOW CREATE CATALOG {catalog_name}"
+            cur.execute(sql)
+            result = cur.fetchone()
+
+            create_statement = result[0] if result and len(result) > 0 else None
+
+            # 获取 catalog 的系统表信息
+            cur.execute(f"SELECT * FROM system.metadata.catalogs WHERE catalog_name = '{catalog_name}'")
+            catalog_info = cur.fetchall()
+
+            cur.close()
+            conn.close()
+
+            return {
+                "catalog_name": catalog_name,
+                "exists": True,
+                "create_statement": create_statement,
+                "catalog_info": catalog_info,
+                "note": "SHOW CREATE CATALOG is only available in dynamic catalog management mode"
+            }
+
+        except Exception as show_error:
+            # 如果 SHOW CREATE CATALOG 不可用，返回基本信息
+            cur.execute(f"SHOW SCHEMAS FROM {catalog_name}")
+            schemas = [row[0] for row in cur.fetchall()]
+
+            cur.close()
+            conn.close()
+
+            return {
+                "catalog_name": catalog_name,
+                "exists": True,
+                "schemas": schemas,
+                "schema_count": len(schemas),
+                "note": "Dynamic catalog management may not be enabled. Only basic information available."
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting catalog properties for {catalog_name}: {str(e)}")
+        return {
+            "catalog_name": catalog_name,
+            "error": str(e),
+            "exists": False
+        }
+
 def main():
     """Main entry point for the MCP server."""
     # 从环境变量获取主机和端口
