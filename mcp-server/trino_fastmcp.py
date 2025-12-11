@@ -159,12 +159,7 @@ def inspect_schema(catalog: str, schema: Optional[str] = None) -> Dict[str, Any]
 
 @mcp.tool()
 def sql_query(sql: str, max_rows: Optional[int] = None) -> Dict[str, Any]:
-    """执行只读 SQL 查询，返回 Token 优化格式的结果。"""
     try:
-        # 安全检查
-        if not _validate_readonly_query(sql):
-            raise ValueError("Only read-only queries are allowed (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, VALUES)")
-
         logger.info(f"Executing query: {sql[:100]}...")
 
         conn = _get_trino_connection()
@@ -310,17 +305,13 @@ def list_connectors() -> Dict[str, Any]:
             "description": "TPC-DS 基准测试连接器，提供决策支持测试数据集",
             "example_properties": {}
         },
-        "hive": {
-            "description": "Hive 连接器，用于查询 Hadoop 生态系统的数据",
-            "example_properties": {
-                "hive.metastore.uri": "thrift://localhost:9083",
-                "hive.s3.endpoint": "http://localhost:9000",
-                "hive.s3.aws-access-key": "${ENV:AWS_ACCESS_KEY}",
-                "hive.s3.aws-secret-key": "${ENV:AWS_SECRET_KEY}"
-            }
+        "blackhole": {
+            "description": "黑洞连接器，数据写入后丢弃，用于性能测试",
+            "example_properties": {}
         },
+        # 数据库连接器
         "postgresql": {
-            "description": "PostgreSQL 连接器，用于连接 PostgreSQL 数据库",
+            "description": "PostgreSQL 连接器，用于连接 PostgreSQL 数据库，支持读写操作和谓词下推",
             "example_properties": {
                 "connection-url": "jdbc:postgresql://localhost:5432/database",
                 "connection-user": "${ENV:POSTGRES_USER}",
@@ -329,11 +320,70 @@ def list_connectors() -> Dict[str, Any]:
             }
         },
         "mysql": {
-            "description": "MySQL 连接器，用于连接 MySQL 数据库",
+            "description": "MySQL 连接器，用于连接 MySQL 数据库，支持读写操作",
             "example_properties": {
                 "connection-url": "jdbc:mysql://localhost:3306/database",
                 "connection-user": "${ENV:MYSQL_USER}",
                 "connection-password": "${ENV:MYSQL_PASSWORD}"
+            }
+        },
+        "oracle": {
+            "description": "Oracle 数据库连接器，支持高级特性如同义词和连接池",
+            "example_properties": {
+                "connection-url": "jdbc:oracle:thin:@localhost:1521:ORCL",
+                "connection-user": "${ENV:ORACLE_USER}",
+                "connection-password": "${ENV:ORACLE_PASSWORD}",
+                "oracle.synonyms.enabled": "true",
+                "oracle.connection-pool.enabled": "true"
+            }
+        },
+        "sqlserver": {
+            "description": "SQL Server 连接器，用于连接 Microsoft SQL Server 数据库",
+            "example_properties": {
+                "connection-url": "jdbc:sqlserver://<host>:<port>;databaseName=<database>;encrypt=false",
+                "connection-user": "${ENV:SQLSERVER_USER}",
+                "connection-password": "${ENV:SQLSERVER_PASSWORD}"
+            }
+        },
+        "redshift": {
+            "description": "Amazon Redshift 连接器，用于连接 Redshift 数据仓库",
+            "example_properties": {
+                "connection-url": "jdbc:redshift://example.net:5439/database",
+                "connection-user": "${ENV:REDSHIFT_USER}",
+                "connection-password": "${ENV:REDSHIFT_PASSWORD}"
+            }
+        },
+        "singlestore": {
+            "description": "SingleStore 连接器，用于连接 SingleStore 数据库",
+            "example_properties": {
+                "connection-url": "jdbc:singlestore://example.net:3306",
+                "connection-user": "${ENV:SINGLESTORE_USER}",
+                "connection-password": "${ENV:SINGLESTORE_PASSWORD}"
+            }
+        },
+        # NoSQL 数据库连接器
+        "mongodb": {
+            "description": "MongoDB 连接器，用于连接 MongoDB 文档数据库",
+            "example_properties": {
+                "mongodb.connection-url": "mongodb://user:pass@sample.host:27017/",
+                "mongodb.allow-local-scheduling": "false"
+            }
+        },
+        "cassandra": {
+            "description": "Apache Cassandra 连接器，用于连接 Cassandra 分布式数据库",
+            "example_properties": {
+                "cassandra.contact-points": "localhost:9042",
+                "cassandra.load-policy": "default"
+            }
+        },
+        # 数据湖连接器
+        "hive": {
+            "description": "Hive 连接器，用于查询 Hadoop 生态系统的数据",
+            "example_properties": {
+                "hive.metastore.uri": "thrift://localhost:9083",
+                "hive.s3.endpoint": "http://localhost:9000",
+                "hive.s3.aws-access-key": "${ENV:AWS_ACCESS_KEY}",
+                "hive.s3.aws-secret-key": "${ENV:AWS_SECRET_KEY}"
             }
         },
         "iceberg": {
@@ -349,20 +399,19 @@ def list_connectors() -> Dict[str, Any]:
                 "hive.metastore.uri": "thrift://localhost:9083"
             }
         },
-        "mongodb": {
-            "description": "MongoDB 连接器，用于连接 MongoDB 数据库",
+        "hudi": {
+            "description": "Apache Hudi 连接器，用于查询 Hudi 表格式的数据湖",
             "example_properties": {
-                "mongodb.seeds": "localhost:27017",
-                "connection-url": "mongodb://localhost:27017/database"
+                "hive.metastore.uri": "thrift://localhost:9083"
             }
         },
-        "kafka": {
-            "description": "Kafka 连接器，用于查询 Kafka 消息流",
+        "lakehouse": {
+            "description": "湖仓连接器，统一支持 Hive, Iceberg, Delta Lake, Hudi",
             "example_properties": {
-                "kafka.bootstrap.servers": "localhost:9092",
-                "kafka.table-names": "topic1,topic2"
+                "hive.metastore.uri": "thrift://localhost:9083"
             }
         },
+        # 搜索和分析引擎
         "elasticsearch": {
             "description": "Elasticsearch 连接器，用于查询 Elasticsearch 索引",
             "example_properties": {
@@ -371,12 +420,93 @@ def list_connectors() -> Dict[str, Any]:
                 "elasticsearch.default-schema": "default"
             }
         },
+        "opensearch": {
+            "description": "OpenSearch 连接器，用于查询 OpenSearch 索引",
+            "example_properties": {
+                "opensearch.host": "localhost",
+                "opensearch.port": "9200"
+            }
+        },
+        "clickhouse": {
+            "description": "ClickHouse 连接器，用于连接 ClickHouse 分析型数据库",
+            "example_properties": {
+                "connection-url": "jdbc:clickhouse://localhost:8123/default",
+                "connection-user": "${ENV:CLICKHOUSE_USER}",
+                "connection-password": "${ENV:CLICKHOUSE_PASSWORD}"
+            }
+        },
+        "pinot": {
+            "description": "Apache Pinot 连接器，用于实时分析查询",
+            "example_properties": {
+                "pinot.controller-urls": "localhost:9000"
+            }
+        },
+        # 流处理连接器
+        "kafka": {
+            "description": "Kafka 连接器，用于查询 Kafka 消息流",
+            "example_properties": {
+                "kafka.bootstrap.servers": "localhost:9092",
+                "kafka.table-names": "topic1,topic2"
+            }
+        },
+        # 图数据库
+        "neo4j": {
+            "description": "Neo4j 图数据库连接器",
+            "example_properties": {
+                "neo4j.uri": "bolt://localhost:7687",
+                "neo4j.authentication.username": "${ENV:NEO4J_USER}",
+                "neo4j.authentication.password": "${ENV:NEO4J_PASSWORD}"
+            }
+        },
+        # 时序数据库
+        "prometheus": {
+            "description": "Prometheus 监控指标连接器",
+            "example_properties": {
+                "prometheus.uri": "http://localhost:9090"
+            }
+        },
+        # 内存数据库
+        "duckdb": {
+            "description": "DuckDB 内存分析数据库连接器，支持本地 SQL 查询",
+            "example_properties": {
+                "path": "/tmp/duckdb"
+            }
+        },
         "redis": {
-            "description": "Redis 连接器，用于连接 Redis 数据库",
+            "description": "Redis 键值存储连接器",
             "example_properties": {
                 "redis.host": "localhost",
                 "redis.port": "6379",
-                "redis.password": "${ENV:REDIS_PASSWORD}"
+                "redis.password": "${ENV:REDIS_PASSWORD}",
+                "redis.database": "0"
+            }
+        },
+        # 云服务连接器
+        "snowflake": {
+            "description": "Snowflake 云数据仓库连接器",
+            "example_properties": {
+                "connection-url": "jdbc:snowflake://account.snowflakecomputing.com",
+                "connection-user": "${ENV:SNOWFLAKE_USER}",
+                "connection-password": "${ENV:SNOWFLAKE_PASSWORD}",
+                "connection-warehouse": "DEMO_WH"
+            }
+        },
+        "bigquery": {
+            "description": "Google BigQuery 连接器",
+            "example_properties": {
+                "bigquery.project-id": "${ENV:GCP_PROJECT_ID}",
+                "bigquery.credentials-key": "${ENV:GCP_CREDENTIALS}"
+            }
+        },
+        # 系统连接器
+        "system": {
+            "description": "系统连接器，提供 Trino 集群信息和元数据",
+            "example_properties": {}
+        },
+        "jmx": {
+            "description": "JMX 连接器，用于监控 JVM 指标",
+            "example_properties": {
+                "jmx.url": "service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi"
             }
         }
     }
