@@ -258,8 +258,16 @@ def preview_table(table: str, limit: int = 20) -> Dict[str, Any]:
         # 构建 SELECT 查询
         query = f"SELECT * FROM {catalog}.{schema}.{table_name} LIMIT {limit}"
 
-        # 使用 sql_query 执行
-        result = sql_query(query, limit)
+        # 直接执行查询，而不是调用 sql_query 函数
+        conn = _get_trino_connection()
+        cur = conn.cursor()
+        cur.execute(query)
+
+        # 使用紧凑格式
+        result = _format_compact_result(cur, limit)
+
+        cur.close()
+        conn.close()
 
         return result
 
