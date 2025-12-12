@@ -67,7 +67,7 @@ def _format_compact_result(cursor, max_rows: Optional[int] = None) -> Dict[str, 
     if not rows:
         return {"columns": columns, "rows": []}
 
-    # 处理行数据（限制行数并截断长字段）
+    # 处理行数据（限制行数但不截断长字段）
     display_rows = rows[:max_rows]
     processed_rows = []
 
@@ -77,11 +77,8 @@ def _format_compact_result(cursor, max_rows: Optional[int] = None) -> Dict[str, 
             if cell is None:
                 processed_row.append("")
             else:
-                cell_str = str(cell)
-                # 截断过长的字段
-                if len(cell_str) > MAX_CELL_LENGTH:
-                    cell_str = cell_str[:MAX_CELL_LENGTH - len(TRUNCATE_MARKER)] + TRUNCATE_MARKER
-                processed_row.append(cell_str)
+                # 直接使用原始值，不进行任何截断
+                processed_row.append(str(cell))
         processed_rows.append(processed_row)
 
     # 只在数据被截断时添加消息
@@ -132,7 +129,7 @@ def inspect_schema(catalog: str, schema: Optional[str] = None) -> Dict[str, Any]
         cur = conn.cursor()
 
         if schema:
-            cur.execute(f"SHOW TABLES FROM {catalog}.{schema}")
+            cur.execute(f'SHOW TABLES FROM "{catalog}"."{schema}"')
             tables = [row[0] for row in cur.fetchall()]
             result = {
                 "catalog": catalog,
@@ -141,7 +138,7 @@ def inspect_schema(catalog: str, schema: Optional[str] = None) -> Dict[str, Any]
                 "count": len(tables)
             }
         else:
-            cur.execute(f"SHOW SCHEMAS FROM {catalog}")
+            cur.execute(f'SHOW SCHEMAS FROM "{catalog}"')
             schemas = [row[0] for row in cur.fetchall()]
             result = {
                 "catalog": catalog,
@@ -159,24 +156,62 @@ def inspect_schema(catalog: str, schema: Optional[str] = None) -> Dict[str, Any]
 
 @mcp.tool()
 def sql_query(sql: str, max_rows: Optional[int] = None) -> Dict[str, Any]:
+    """
+    执行 SQL 查询，支持多条语句用分号分割。
+
+    注意：SQL 中不允许包含注释（-- 或 /* */）
+
+    Examples:
+        # 单条查询
+        sql_query("SELECT * FROM users LIMIT 10")
+
+        # 多条查询 - 只返回最后一条结果
+        sql_query("SELECT COUNT(*) FROM users; SELECT * FROM users ORDER BY id DESC LIMIT 5")
+
+        # 设置查询参数后再查询
+        sql_query("SET SESSION query_max_run_time = '1h'; SELECT * FROM large_table")
+    """
     try:
-        logger.info(f"Executing query: {sql[:100]}...")
+
+        # 按分号分割语句
+        statements = []
+        for stmt in sql.split(';'):
+            stmt = stmt.strip()
+            if stmt:  # 只保留非空语句
+                statements.append(stmt)
+
+        if not statements:
+            raise ValueError("No valid SQL statements found")
+
+        logger.info(f"Executing {len(statements)} SQL statement(s), last query: {statements[-1][:100]}...")
 
         conn = _get_trino_connection()
         cur = conn.cursor()
-        cur.execute(sql)
 
-        # 使用紧凑格式
+        # 执行所有语句，但只收集最后一条查询的结果
+        # SET/USE 等语句不返回结果，SELECT 等查询语句才返回结果
+        for i, statement in enumerate(statements):
+            logger.info(f"Executing statement {i+1}/{len(statements)}: {statement[:100]}...")
+            cur.execute(statement)
+
+        # 使用最后一条语句的结果
         result = _format_compact_result(cur, max_rows)
 
         cur.close()
         conn.close()
+
+        # 添加执行信息
+        result["executed_statements"] = len(statements)
+        if len(statements) > 1:
+            result["message"] = f"Executed {len(statements)} statements. Showing result of the last query."
 
         return result
 
     except Exception as e:
         logger.error(f"Error executing query: {str(e)}")
         raise Exception(f"Query execution failed: {str(e)}")
+
+
 
 @mcp.tool()
 def get_table_info(table: str) -> Dict[str, Any]:
@@ -195,7 +230,7 @@ def get_table_info(table: str) -> Dict[str, Any]:
 
         if table_name:
             # 获取特定表的列信息
-            cur.execute(f"DESCRIBE {catalog}.{schema}.{table_name}")
+            cur.execute(f'DESCRIBE "{catalog}"."{schema}"."{table_name}"')
             columns = cur.fetchall()
 
             if columns:
@@ -222,7 +257,7 @@ def get_table_info(table: str) -> Dict[str, Any]:
                 }
         else:
             # 显示模式中的所有表
-            cur.execute(f"SHOW TABLES FROM {catalog}.{schema}")
+            cur.execute(f'SHOW TABLES FROM "{catalog}"."{schema}"')
             tables = [row[0] for row in cur.fetchall()]
             result = {
                 "catalog": catalog,
@@ -250,8 +285,8 @@ def preview_table(table: str, limit: int = 20) -> Dict[str, Any]:
 
         catalog, schema, table_name = parts
 
-        # 构建 SELECT 查询
-        query = f"SELECT * FROM {catalog}.{schema}.{table_name} LIMIT {limit}"
+        # 构建 SELECT 查询，为标识符添加双引号以支持特殊字符
+        query = f'SELECT * FROM "{catalog}"."{schema}"."{table_name}" LIMIT {limit}'
 
         # 直接执行查询，而不是调用 sql_query 函数
         conn = _get_trino_connection()
@@ -320,9 +355,9 @@ def list_connectors() -> Dict[str, Any]:
             }
         },
         "mysql": {
-            "description": "MySQL 连接器，用于连接 MySQL 数据库，支持读写操作",
+            "description": "MySQL 连接器，用于连接 MySQL 数据库，支持读写操作。连接串中不需要添加数据库名",
             "example_properties": {
-                "connection-url": "jdbc:mysql://localhost:3306/database",
+                "connection-url": "jdbc:mysql://localhost:3306",
                 "connection-user": "${ENV:MYSQL_USER}",
                 "connection-password": "${ENV:MYSQL_PASSWORD}"
             }
@@ -568,7 +603,7 @@ def create_catalog(catalog_name: str, connector: str, properties: Dict[str, Any]
             prop_value = f"'{escaped_value}'"
             props_list.append(f"{prop_name} = {prop_value}")
 
-        sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING {connector} WITH ({', '.join(props_list)})"
+        sql = f'CREATE CATALOG IF NOT EXISTS "{catalog_name}" USING {connector} WITH ({", ".join(props_list)})'
 
         logger.info(f"Creating catalog: {sql}")
 
@@ -649,7 +684,7 @@ def drop_catalog(catalog_name: str) -> Dict[str, Any]:
             }
 
         # 执行删除操作
-        sql = f"DROP CATALOG IF EXISTS {catalog_name}"
+        sql = f'DROP CATALOG IF EXISTS "{catalog_name}"'
         logger.info(f"Dropping catalog: {sql}")
 
         cur.execute(sql)
@@ -712,14 +747,14 @@ def get_catalog_properties(catalog_name: str) -> Dict[str, Any]:
         # 尝试获取 catalog 创建信息
         # 注意：SHOW CREATE CATALOG 仅在动态 catalog 管理模式下可用
         try:
-            sql = f"SHOW CREATE CATALOG {catalog_name}"
+            sql = f'SHOW CREATE CATALOG "{catalog_name}"'
             cur.execute(sql)
             result = cur.fetchone()
 
             create_statement = result[0] if result and len(result) > 0 else None
 
             # 获取 catalog 的系统表信息
-            cur.execute(f"SELECT * FROM system.metadata.catalogs WHERE catalog_name = '{catalog_name}'")
+            cur.execute(f'SELECT * FROM system.metadata.catalogs WHERE catalog_name = \'{catalog_name}\'')
             catalog_info = cur.fetchall()
 
             cur.close()
@@ -735,7 +770,7 @@ def get_catalog_properties(catalog_name: str) -> Dict[str, Any]:
 
         except Exception as show_error:
             # 如果 SHOW CREATE CATALOG 不可用，返回基本信息
-            cur.execute(f"SHOW SCHEMAS FROM {catalog_name}")
+            cur.execute(f'SHOW SCHEMAS FROM "{catalog_name}"')
             schemas = [row[0] for row in cur.fetchall()]
 
             cur.close()
