@@ -18,12 +18,16 @@ export interface QueryResult {
 export class TrinoService {
 
     // Submit query and follow paging to get full results
-    static async execute(sql: string): Promise<QueryResult> {
+    static async execute(sql: string, catalog?: string, schema?: string): Promise<QueryResult> {
         // Initial request
+        const headers: any = {
+            'X-Trino-User': 'admin'
+        }
+        if (catalog) headers['X-Trino-Catalog'] = catalog
+        if (schema) headers['X-Trino-Schema'] = schema
+
         let response = await axios.post<TrinoResult>('/v1/statement', sql, {
-            headers: {
-                'X-Trino-User': 'admin' // Managed by proxy usually, but safe to add here if proxy doesn't
-            }
+            headers
         });
 
         let result = response.data;
@@ -71,9 +75,15 @@ export class TrinoService {
         };
     }
 
-    static async getCatalogs(): Promise<string[]> {
-        const res = await this.execute('SHOW CATALOGS');
-        return res.rows.map(r => r[0]);
+    static async getCatalogs(): Promise<{ name: string, connector: string }[]> {
+        try {
+            const res = await this.execute('SELECT catalog_name, connector_id FROM system.metadata.catalogs ORDER BY catalog_name');
+            return res.rows.map(r => ({ name: r[0], connector: r[1] }));
+        } catch (e) {
+            // Fallback if system catalog is not accessible
+            const res = await this.execute('SHOW CATALOGS');
+            return res.rows.map(r => ({ name: r[0], connector: 'unknown' }));
+        }
     }
 
     static async getSchemas(catalog: string): Promise<string[]> {

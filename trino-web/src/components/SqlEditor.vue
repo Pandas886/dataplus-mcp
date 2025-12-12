@@ -20,7 +20,7 @@
 import { ref, shallowRef, watch } from 'vue'
 import { Codemirror } from 'vue-codemirror'
 import { sql } from '@codemirror/lang-sql'
-import { oneDark } from '@codemirror/theme-one-dark'
+const extensions = [sql()]
 
 const props = defineProps({
   modelValue: {
@@ -32,7 +32,6 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const code = ref(props.modelValue)
-const extensions = [sql(), oneDark]
 
 // View binding
 const view = shallowRef()
