@@ -13,13 +13,13 @@
                <div class="toolbar">
                  <div class="left-tools">
                     <span class="context-label">Context:</span>
-                    <el-input v-model="selectedCatalog" placeholder="Catalog" size="small" style="width: 120px" clearable />
-                    <span class="context-sep">.</span>
-                    <el-input v-model="selectedSchema" placeholder="Schema" size="small" style="width: 120px" clearable />
+                    <el-input v-model="selectedCatalog" placeholder="Catalog" style="width: 140px" clearable />
+                    <span class="context-sep">/</span>
+                    <el-input v-model="selectedSchema" placeholder="Schema" style="width: 140px" clearable />
                  </div>
                  <div class="right-tools">
-                    <el-button type="success" size="small" class="run-btn" @click="runQuery" :loading="loading">
-                        <el-icon><VideoPlay /></el-icon> Run
+                    <el-button type="primary" class="run-btn" @click="runQuery" :loading="loading">
+                        <el-icon><VideoPlay /></el-icon> Run Query
                     </el-button>
                  </div>
                </div>
@@ -35,10 +35,10 @@
                     </el-tab-pane>
                     <el-tab-pane label="Run History" name="history">
                         <div class="history-mock">
-                            <el-table :data="historyMock" style="width: 100%" size="small">
+                            <el-table :data="historyMock" style="width: 100%">
                                 <el-table-column prop="status" label="Status" width="100">
                                     <template #default>
-                                        <el-tag type="success" size="small">Success</el-tag>
+                                        <el-tag type="success">Success</el-tag>
                                     </template>
                                 </el-table-column>
                                 <el-table-column prop="time" label="Time" width="180" />
@@ -142,20 +142,20 @@ const runQuery = async () => {
     display: flex;
     background: #f5f7fa;
     border-bottom: 1px solid #e4e7ed;
-    height: 35px;
-    align-items: center;
-    padding-left: 5px;
+    padding-left: 10px;
+    height: 40px;
 }
 .tab {
     display: flex;
     align-items: center;
     padding: 0 10px;
-    height: 28px;
-    font-size: 12px;
+    height: 32px;
+    font-size: 13px;
     cursor: pointer;
-    border-radius: 4px 4px 0 0;
-    margin-right: 2px;
-    color: #606266;
+    border-radius: 6px 6px 0 0;
+    margin-right: 4px;
+    color: var(--text-color);
+    transition: all 0.2s;
 }
 .tab.active {
     background: #fff;
@@ -168,13 +168,15 @@ const runQuery = async () => {
 .tab.add-tab { width: 28px; justify-content: center; padding: 0; }
 
 .toolbar {
-    padding: 5px 10px;
-    border-bottom: 1px solid #ebeef5;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-color);
     background: #fff;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    height: 48px;
+    height: 60px;
+    box-shadow: var(--shadow-sm);
+    z-index: 10;
 }
 .left-tools {
     display: flex;
@@ -203,9 +205,19 @@ const runQuery = async () => {
     border-radius: 4px;
 }
 .run-btn {
-    background-color: #00b96b; /* Green like reference */
-    border-color: #00b96b;
-    font-weight: bold;
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    font-weight: 600;
+    padding: 8px 16px;
+    font-size: 14px;
+    box-shadow: var(--shadow-md);
+    transition: all 0.2s;
+}
+.run-btn:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
 }
 .schema-bar {
     padding: 5px 10px;

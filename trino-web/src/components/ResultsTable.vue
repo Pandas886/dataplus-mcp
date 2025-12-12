@@ -83,11 +83,12 @@ const tableData = computed(() => {
     overflow: hidden;
 }
 .stats-bar {
-    padding: 5px 10px;
-    background: #f5f7fa;
-    border-bottom: 1px solid #ebeef5;
-    font-size: 12px;
-    color: #606266;
+    padding: 8px 16px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
 }
 .cell-content {
     white-space: nowrap;

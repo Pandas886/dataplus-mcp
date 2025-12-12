@@ -3,7 +3,7 @@
     <codemirror
       v-model="code"
       placeholder="Wait for it..."
-      :style="{ height: '100%', fontSize: '14px' }"
+      :style="{ height: '100%', fontSize: '16px' }"
       :autofocus="true"
       :indent-with-tab="true"
       :tab-size="4"

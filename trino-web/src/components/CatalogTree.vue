@@ -5,15 +5,15 @@
             <span>Data Explorer</span>
             <div class="actions">
                 <el-button link type="primary" @click="refresh" title="Refresh">
-                    <el-icon><Refresh /></el-icon>
+                    <el-icon :size="18"><Refresh /></el-icon>
                 </el-button>
                 <el-button link type="primary" @click="showAddCatalog = true" title="Add Catalog">
-                    <el-icon><Plus /></el-icon>
+                    <el-icon :size="18"><Plus /></el-icon>
                 </el-button>
             </div>
         </div>
         <div class="search-box">
-            <el-input v-model="filterText" placeholder="Search" :prefix-icon="Search" clearable />
+             <el-input v-model="filterText" placeholder="Search catalogs..." :prefix-icon="Search" clearable />
         </div>
     </div>
 
@@ -37,7 +37,10 @@
           <el-icon v-else-if="node.level === 2" class="icon-yellow"><Folder /></el-icon>
           <el-icon v-else><Document /></el-icon>
           
-          <span class="node-label">{{ node.label }}</span>
+          <span class="node-label">
+              {{ node.label }}
+              <span v-if="node.level === 1 && data.connector && data.connector !== data.name" class="connector-label">({{ data.connector }})</span>
+          </span>
           
           <!-- Delete Catalog Button (only on hover for catalogs) -->
           <span v-if="node.level === 1" class="actions" @click.stop="deleteCatalog(data.name)">
@@ -298,17 +301,19 @@ const refresh = () => {
     background: #fff;
 }
 .header {
-    padding: 10px;
-    border-bottom: 1px solid #ebeef5;
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
+    background-color: #fff;
 }
 .title-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
-    font-weight: bold;
-    color: #303133;
+    margin-bottom: 12px;
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--text-color);
 }
 .search-box {
     margin-bottom: 5px;
@@ -316,20 +321,34 @@ const refresh = () => {
 .custom-tree {
     flex: 1;
     overflow: auto;
+    padding: 10px 0;
 }
 .custom-tree-node {
     display: flex;
     align-items: center;
-    font-size: 13px;
+    font-size: 14px;
     flex: 1;
     justify-content: space-between;
     padding-right: 8px; 
+    height: 36px;
+}
+:deep(.el-tree-node__content) {
+    height: 36px;
 }
 .node-label {
-    margin-left: 6px;
+    margin-left: 8px;
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.connector-label {
+    font-size: 12px;
+    color: #94a3b8;
+    font-weight: normal;
 }
 .actions {
     display: none;

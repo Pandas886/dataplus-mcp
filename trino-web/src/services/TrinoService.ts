@@ -77,7 +77,7 @@ export class TrinoService {
 
     static async getCatalogs(): Promise<{ name: string, connector: string }[]> {
         try {
-            const res = await this.execute('SELECT catalog_name, connector_id FROM system.metadata.catalogs ORDER BY catalog_name');
+            const res = await this.execute('SELECT catalog_name, connector_name FROM system.metadata.catalogs ORDER BY catalog_name');
             return res.rows.map(r => ({ name: r[0], connector: r[1] }));
         } catch (e) {
             // Fallback if system catalog is not accessible
