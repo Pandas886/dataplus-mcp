@@ -107,16 +107,34 @@ def _validate_readonly_query(sql: str) -> bool:
 # --- MCP Tools ---
 
 @mcp.tool()
-def show_catalogs() -> List[str]:
-    """列出所有可用的数据目录（包括预设配置）。"""
+def show_catalogs() -> Dict[str, Any]:
+    """列出所有可用的数据目录（包括预设配置），返回 catalog 名称和 connector 类型。"""
     try:
         conn = _get_trino_connection()
         cur = conn.cursor()
-        cur.execute("SHOW CATALOGS")
-        catalogs = [row[0] for row in cur.fetchall()]
+
+        # 使用 system.metadata.catalogs 表获取更详细的信息
+        cur.execute("""
+            SELECT catalog_name, connector_name
+            FROM system.metadata.catalogs
+            ORDER BY catalog_name
+        """)
+
+        catalogs_info = []
+        for row in cur.fetchall():
+            catalogs_info.append({
+                "catalog_name": row[0],
+                "connector_type": row[1] if row[1] else "unknown"
+            })
+
         cur.close()
         conn.close()
-        return catalogs
+
+        return {
+            "catalogs": catalogs_info,
+            "count": len(catalogs_info)
+        }
+
     except Exception as e:
         logger.error(f"Error showing catalogs: {str(e)}")
         raise Exception(f"Failed to list catalogs: {str(e)}")
