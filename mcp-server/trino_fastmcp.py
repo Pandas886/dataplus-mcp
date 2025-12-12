@@ -620,7 +620,7 @@ def create_catalog(catalog_name: str, connector: str, properties: Dict[str, Any]
 
         if catalog_name in catalogs:
             # 获取创建的 catalog 信息
-            catalog_info = get_catalog_properties(catalog_name)
+            catalog_info = _get_catalog_properties_internal(catalog_name)
 
             return {
                 "success": True,
@@ -717,9 +717,8 @@ def drop_catalog(catalog_name: str) -> Dict[str, Any]:
             "message": f"Error dropping catalog: {str(e)}"
         }
 
-@mcp.tool()
-def get_catalog_properties(catalog_name: str) -> Dict[str, Any]:
-    """获取指定 catalog 的配置属性。
+def _get_catalog_properties_internal(catalog_name: str) -> Dict[str, Any]:
+    """获取指定 catalog 的配置属性的内部函数。
 
     Args:
         catalog_name: catalog 名称
@@ -791,6 +790,18 @@ def get_catalog_properties(catalog_name: str) -> Dict[str, Any]:
             "error": str(e),
             "exists": False
         }
+
+@mcp.tool()
+def get_catalog_properties(catalog_name: str) -> Dict[str, Any]:
+    """获取指定 catalog 的配置属性。
+
+    Args:
+        catalog_name: catalog 名称
+
+    Returns:
+        catalog 的配置信息，包括创建语句和解析后的属性
+    """
+    return _get_catalog_properties_internal(catalog_name)
 
 def main():
     """Main entry point for the MCP server."""
